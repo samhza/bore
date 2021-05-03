@@ -19,7 +19,7 @@ func main() {
 	}
 	switch flag.Arg(0) {
 	case "put":
-		if len(flag.Args()) < 3 {
+		if len(flag.Args()) < 2 {
 			os.Exit(1)
 		}
 		tx, err := db.Begin(true)
@@ -71,12 +71,14 @@ func main() {
 			}
 			incl = append(incl, arg)
 		}
-		results, err := tx.Search(incl, excl)
+		err = tx.ForEach(func(ent filedb.Entry) error {
+			if filedb.Matches(ent, incl, excl) {
+				fmt.Println(ent.Filename)
+			}
+			return nil
+		})
 		if err != nil {
 			log.Fatalln(err)
-		}
-		for _, ent := range results {
-			fmt.Println(ent.Filename)
 		}
 	case "rename":
 		if len(flag.Args()) < 3 {

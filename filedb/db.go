@@ -84,27 +84,22 @@ func (tx *Tx) fileB() *bolt.Bucket {
 	return tx.tx.Bucket([]byte("files"))
 }
 
-func (tx *Tx) Search(incl, excl []string) (results []Entry, err error) {
-	err = tx.ForEach(
-		func(ent Entry) error {
-			has := make(map[string]struct{}, len(ent.Tags))
-			for _, tag := range ent.Tags {
-				has[tag] = struct{}{}
-			}
-			for _, req := range incl {
-				if _, ok := has[req]; !ok {
-					return nil
-				}
-			}
-			for _, cant := range excl {
-				if _, ok := has[cant]; ok {
-					return nil
-				}
-			}
-			results = append(results, ent)
-			return nil
-		})
-	return
+func Matches(ent Entry, incl, excl []string) bool {
+	has := make(map[string]struct{}, len(ent.Tags))
+	for _, tag := range ent.Tags {
+		has[tag] = struct{}{}
+	}
+	for _, req := range incl {
+		if _, ok := has[req]; !ok {
+			return false
+		}
+	}
+	for _, cant := range excl {
+		if _, ok := has[cant]; ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (tx *Tx) Rename(tag, newtag string) error {
@@ -144,11 +139,49 @@ func (tx *Tx) Move(name, newname string) error {
 	return b.Delete([]byte(name))
 }
 
+func (tx *Tx) Len() int {
+	return tx.fileB().Stats().KeyN
+}
+
 func (tx *Tx) Delete(name string) error {
 	return tx.fileB().Delete([]byte(name))
+}
+
+func (tx *Tx) Cursor() *Cursor {
+	return &Cursor{tx.fileB().Cursor()}
 }
 
 type Entry struct {
 	Filename string
 	Tags     []string
+}
+
+type Cursor struct {
+	cur *bolt.Cursor
+}
+
+func (c *Cursor) First() *Entry {
+	return kvToEntPtr(c.cur.First())
+}
+func (c *Cursor) Last() *Entry {
+	return kvToEntPtr(c.cur.Last())
+}
+func (c *Cursor) Next() *Entry {
+	return kvToEntPtr(c.cur.Next())
+}
+func (c *Cursor) Prev() *Entry {
+	return kvToEntPtr(c.cur.Prev())
+}
+func (c *Cursor) Seek(name string) *Entry {
+	return kvToEntPtr(c.cur.Seek([]byte(name)))
+}
+func (c *Cursor) Delete() error {
+	return c.cur.Delete()
+}
+
+func kvToEntPtr(k, v []byte) *Entry {
+	if k == nil {
+		return nil
+	}
+	return &Entry{string(k), strings.Split(string(v), "\x00")}
 }
